@@ -1,0 +1,104 @@
+name: Frontend CI workflow
+
+on:
+  # running on-demand
+  workflow_dispatch:
+  # running on pull request on main branch with only on changes to the /frontend/* code
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'starter/frontend/**'
+env:
+  NODE_VERSION: 18.x
+
+jobs:
+  lint:
+    name: Frontend Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./starter/frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: run eslint rules
+        run: npm run lint
+
+  test:
+    name: Frontend Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./starter/frontend
+    steps:
+      - name: Checkout frontend code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Run tests
+        run: |
+          npm test
+
+  build:
+    name: Build and Push Docker image for frontend code
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./starter/frontend
+    needs: [lint, test]
+    steps:
+      - name: Checkout frontend code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Configure AWS credentials from github secret
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          mask-password: "true"
+
+      - name: Build, Tag, and Push docker image to ECR
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: frontend
+          IMAGE_TAG: latest
+        run: |
+          echo "Registry: $REGISTRY"
+          echo "Repository: $REPOSITORY"
+          echo "Image Tag: $IMAGE_TAG"
+          aws eks update-kubeconfig --name cluster
+          export EXTERNALIP=$(kubectl get svc backend -o=jsonpath='{.status.loadBalancer.ingress[0].hostname}{"\n"}{.status.loadBalancer.ingress[0].ip}')
+          echo $EXTERNALIP
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG --build-arg=REACT_APP_MOVIE_API_URL=http://$EXTERNALIP .
+          docker images
+
+      - name: Cache Docker image
+        uses: actions/cache@v3
+        with:
+          path: ~/docker-cache
+          key: docker-${{ github.sha }}-frontend
+          restore-keys: |
+            docker-${{ github.sha }}-
