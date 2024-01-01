@@ -50,7 +50,7 @@ jobs:
 
       - name: Run tests
         run: |
-          npm test
+          npm run test
 
   build:
     name: Build and Push Docker image for frontend code
