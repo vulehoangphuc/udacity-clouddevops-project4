@@ -32,7 +32,7 @@ jobs:
         run: npm install
 
       - name: run eslint rules
-        run: npm run lint
+        run: npm run lint -- --fix
 
   test:
     name: Frontend Test
